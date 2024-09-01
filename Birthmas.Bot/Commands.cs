@@ -147,13 +147,16 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             await arg.FollowupAsync("Please enter a valid date");
             return;
         }
-        
-        var person = _service.AddBirthday(arg.User.Id, date);
-        var servers = await _service.GetServersByUserAsync(arg.User.Id);
-        foreach (var s in servers)
+
+        try
         {
-            _service.AddBirthmas(person, s);
+            var person = _service.AddBirthday(arg.User.Id, date, arg.GuildId!.Value);
         }
+        catch
+        {
+            await arg.FollowupAsync("This server has not been configured yet.");
+        }
+        
         _ = arg.FollowupAsync($"Your birthday has been recorded as {date:M}");
     }
     
@@ -199,7 +202,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     {   
         await arg.DeferAsync(ephemeral: true);
         
-        _service.RemoveBirthday(arg.User.Id);
+        _service.RemoveBirthday(arg.User.Id, arg.GuildId!.Value);
         
         await arg.FollowupAsync("Your birthday has been removed.", ephemeral: true);
     }
@@ -216,19 +219,24 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     public async Task GetServerBirthdays(SocketSlashCommand arg)
     {
         await arg.DeferAsync(ephemeral: true);
-        var births = _service.GetBirthmasesForServer(arg.GuildId!.Value);
-        if (!births.Any())
+        var births = _service.GetServer(arg.GuildId!.Value);
+        if (null == births)
+        {
+            await arg.FollowupAsync("This server has not been configured yet.");
+            return;
+        }
+        if (!births.People.Any())
         {
             await arg.FollowupAsync("No birthdays found.");
             return;
         }
-        int longestUsername = births
-            .Select(b => _client.GetUserAsync(b.Person.UserId).Result.Username)
+        int longestUsername = births.People
+            .Select(b => _client.GetUserAsync(b.UserId).Result.Username)
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
-        int longestDate = births
-            .Select(b => $"{b.Person.Date:dddd, MMMM dd, yyyy}")
+        int longestDate = births.People
+            .Select(b => $"{b.Date:dddd, MMMM dd, yyyy}")
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
@@ -239,12 +247,12 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
         builder.AppendLine(header);
         builder.AppendLine(string.Concat(Enumerable.Repeat('-', header.Length)));
 
-        foreach (var b in births)
+        foreach (var b in births.People)
         {
-            var username = await _client.GetUserAsync(b.Person.UserId)
+            var username = await _client.GetUserAsync(b.UserId)
                            ?? throw new Exception("User not found");
             var currentYear = DateTime.Now.Year;
-            var bday = b.Person.Date;
+            var bday = b.Date;
             var birthday = bday.AddYears(currentYear - bday.Year).ToString("dddd, MMMM dd, yyyy");
 
             builder.AppendLine($"| {username.Username.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} |");

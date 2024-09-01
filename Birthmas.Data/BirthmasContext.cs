@@ -8,20 +8,14 @@ public class BirthmasContext : DbContext
 {
     public DbSet<Person> People { get; set; }
     public DbSet<ServerConfig> ServerConfigs { get; set; }
-    public DbSet<Birthmas> Birthmas { get; set; }
     public DbSet<Config> Configs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Person>()
-            .HasMany(p => p.Birthmas)
-            .WithOne(b => b.Person)
-            .IsRequired();
-        
         modelBuilder.Entity<ServerConfig>()
-            .HasMany(s => s.Birthmas)
-            .WithOne(b => b.ServerConfig)
-            .IsRequired(false);
+            .HasMany(sc => sc.People)
+            .WithOne(p => p.Server)
+            .IsRequired();
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder = null)
@@ -45,11 +39,11 @@ public class BirthmasContext : DbContext
 
 public class Person
 {
-    [Key]
+    public Guid Id { get; set; }
     public ulong UserId { get; set; }
     public DateTime Date { get; set; }
     
-    public ICollection<Birthmas> Birthmas { get; set; }
+    public ServerConfig Server { get; set; }
 }
 
 public class ServerConfig
@@ -60,14 +54,7 @@ public class ServerConfig
     public bool GiveRole { get; set; }
     public ulong RoleId { get; set; }
     
-    public ICollection<Birthmas> Birthmas { get; set; }
-}
-
-public class Birthmas
-{
-    public Guid Id { get; set; }
-    public Person Person { get; set; }
-    public ServerConfig ServerConfig { get; set; }
+    public ICollection<Person> People { get; set; }
 }
 
 public class Config

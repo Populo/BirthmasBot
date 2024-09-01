@@ -66,15 +66,24 @@ public class BirthmasService : IBirthmasService
         await user.AddRoleAsync(role);
     }
 
-    public Person AddBirthday(ulong userId, DateTime date)
+    public Person AddBirthday(ulong userId, DateTime date, ulong serverId)
     {
         using var db = new BirthmasContext();
 
-        var birthday = db.People.FirstOrDefault(b => b.UserId == userId);
+        var birthday = db.People
+            .Include(b => b.Server)
+            .FirstOrDefault(b => b.UserId == userId
+            && b.Server.ServerId == serverId);
+        
         if (null == birthday) {
+            var server = db.ServerConfigs.FirstOrDefault(s => s.ServerId == serverId);
+            if (null == server) throw new Exception("Cannot find server");
+            
             birthday = new Person()
             {
-                UserId = userId
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Server = server
             };
             
             db.People.Add(birthday);
@@ -123,16 +132,16 @@ public class BirthmasService : IBirthmasService
         _logger.Info($"Removed birthday role {role.Name} from {user.Username} in {guild.Name}");
     }
 
-    public Person? RemoveBirthday(ulong userId)
+    public Person? RemoveBirthday(ulong userId, ulong serverId)
     {
         using var db = new BirthmasContext();
         var birthday = db.People
-            .Include(p => p.Birthmas)
-            .FirstOrDefault(b => b.UserId == userId);
+            .Include(b => b.Server)
+            .FirstOrDefault(b => b.UserId == userId
+                && b.Server.ServerId == serverId);
         if (null == birthday) return null;
         
         db.People.Remove(birthday);
-        db.Birthmas.RemoveRange(birthday.Birthmas);
         db.SaveChanges();
         
         _logger.Info($"Removed birthday for user {userId}");
@@ -143,13 +152,13 @@ public class BirthmasService : IBirthmasService
     {
         using var db = new BirthmasContext();
         var server = db.ServerConfigs
-            .Include(s => s.Birthmas)
+            .Include(s => s.People)
             .FirstOrDefault(s => s.ServerId == serverId);
         
         if (null == server) return null;
         
         db.ServerConfigs.Remove(server);
-        db.Birthmas.RemoveRange(server.Birthmas);
+        db.People.RemoveRange(server.People);
         db.SaveChanges();
         
         _logger.Info($"Removed server {serverId}");
@@ -160,38 +169,5 @@ public class BirthmasService : IBirthmasService
     {
         using var db = new BirthmasContext();
         return db.ServerConfigs.FirstOrDefault(s => s.ServerId == serverId);
-    }
-
-    public void AddBirthmas(Person person, ServerConfig config)
-    {
-        using var db = new BirthmasContext();
-        var p = db.People.Find(person.UserId)
-            ?? throw new Exception("Cannot find person");
-        var sc = db.ServerConfigs.Find(config.ServerId)
-            ?? throw new Exception("Cannot find config");
-        
-        var existing = db.Birthmas
-            .FirstOrDefault(b => b.ServerConfig == sc && b.Person == p);
-
-        if (null == existing)
-        {
-            db.Birthmas.Add(new Data.Birthmas()
-            {
-                Id = Guid.NewGuid(),
-                ServerConfig = sc,
-                Person = p
-            });
-            db.SaveChanges();
-        }
-    }
-
-    public List<Data.Birthmas> GetBirthmasesForServer(ulong serverId)
-    {
-        using var db = new BirthmasContext();
-        return db.Birthmas
-            .Include(b => b.Person)
-            .Include(b => b.ServerConfig)
-            .Where(b => b.ServerConfig.ServerId == serverId)
-            .ToList();
     }
 }
