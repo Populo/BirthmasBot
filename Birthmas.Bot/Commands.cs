@@ -246,8 +246,9 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
         var builder = new StringBuilder();
         builder.AppendLine(header);
         builder.AppendLine(string.Concat(Enumerable.Repeat('-', header.Length)));
+        var peopleSorted = births.People.OrderBy(p => p.Date);
 
-        foreach (var b in births.People)
+        foreach (var b in peopleSorted)
         {
             var username = await _client.GetUserAsync(b.UserId)
                            ?? throw new Exception("User not found");
