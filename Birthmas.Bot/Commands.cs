@@ -140,7 +140,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
         DateTime date;
         try
         {
-            date = new DateTime(1970, month, day);
+            date = new DateTime(1972, month, day);
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -155,6 +155,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
         catch
         {
             await arg.FollowupAsync("This server has not been configured yet.");
+            return;
         }
         
         _ = arg.FollowupAsync($"Your birthday has been recorded as {date:M}");
@@ -218,7 +219,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     
     public async Task GetServerBirthdays(SocketSlashCommand arg)
     {
-        await arg.DeferAsync(ephemeral: true);
+        await arg.DeferAsync();
         var births = _service.GetServer(arg.GuildId!.Value);
         if (null == births)
         {
@@ -236,17 +237,19 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             .First()
             .Length;
         int longestDate = births.People
-            .Select(b => $"{b.Date:dddd, MMMM dd, yyyy}")
+            .Select(b => $"{b.Date:dddd MMMM dd, yyyy}")
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
-
-        var header = $"```| {"Person".CenterString(longestUsername)} | {"Birthday".CenterString(longestDate)} |";
+        
+        var header = $"| {"Person".CenterString(longestUsername)} | {"Birthday".CenterString(longestDate)} |";
         
         var builder = new StringBuilder();
+        
+        builder.AppendLine("```");
         builder.AppendLine(header);
         builder.AppendLine(string.Concat(Enumerable.Repeat('-', header.Length)));
-        var peopleSorted = births.People.OrderBy(p => p.Date);
+        var peopleSorted = births.People.OrderBy(p => p.Date.DayOfYear);
 
         foreach (var b in peopleSorted)
         {
@@ -254,7 +257,14 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
                            ?? throw new Exception("User not found");
             var currentYear = DateTime.Now.Year;
             var bday = b.Date;
-            var birthday = bday.AddYears(currentYear - bday.Year).ToString("dddd, MMMM dd, yyyy");
+            string birthday;
+            
+            var leap = bday is { Month: 2, Day: 29 };
+            bday = bday.AddYears(currentYear - bday.Year + 1);
+            
+            birthday = $"{bday:dddd MMMM dd, yyyy}";
+            birthday += leap ? "*" : string.Empty;
+           
 
             builder.AppendLine($"| {username.Username.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} |");
         }
