@@ -26,9 +26,72 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             new SlashCommandOptionBuilder
             {
                 Name = "month",
-                Description = "Month of birthday (as number)",
+                Description = "Month of birthday",
                 IsRequired = true,
-                Type = ApplicationCommandOptionType.Integer
+                Type = ApplicationCommandOptionType.Integer,
+                Choices = 
+                    [
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "January",
+                            Value = 1
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "February",
+                            Value = 2
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "March",
+                            Value = 3
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "April",
+                            Value = 4
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "May",
+                            Value = 5
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "June",
+                            Value = 6
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "July",
+                            Value = 7
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "August",
+                            Value = 8
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "September",
+                            Value = 9
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "October",
+                            Value = 10
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "November",
+                            Value = 11
+                        },
+                        new ApplicationCommandOptionChoiceProperties()
+                        {
+                            Name = "December",
+                            Value = 12
+                        }
+                    ]
             },
 
             new SlashCommandOptionBuilder
@@ -88,7 +151,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     private static readonly SlashCommandBuilder ServerBirthdays = new()
     {
         Name = "server-birthdays",
-        Description = "See birthdays coming up in the next week",
+        Description = "See all birthdays for the year",
     };
 
     private static readonly SlashCommandBuilder MyBirthday = new()
@@ -257,12 +320,11 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
                            ?? throw new Exception("User not found");
             var currentYear = DateTime.Now.Year;
             var bday = b.Date;
-            string birthday;
-            
+
             var leap = bday is { Month: 2, Day: 29 };
-            bday = bday.AddYears(currentYear - bday.Year + 1);
+            bday = bday.AddYears(currentYear - bday.Year);
             
-            birthday = $"{bday:dddd MMMM dd, yyyy}";
+            var birthday = $"{bday:dddd MMMM dd, yyyy}";
             birthday += leap ? "*" : string.Empty;
            
 
