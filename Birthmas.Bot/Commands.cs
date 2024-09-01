@@ -241,7 +241,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             .First()
             .Length;
 
-        var header = $"| {"Person".CenterString(longestUsername)} | {"Birthday".CenterString(longestDate)} |";
+        var header = $"```| {"Person".CenterString(longestUsername)} | {"Birthday".CenterString(longestDate)} |";
         
         var builder = new StringBuilder();
         builder.AppendLine(header);
@@ -257,6 +257,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
 
             builder.AppendLine($"| {username.Username.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} |");
         }
+
+        builder.Append("```");
 
         await arg.FollowupAsync(builder.ToString());
     }

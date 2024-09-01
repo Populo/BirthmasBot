@@ -168,6 +168,8 @@ public class BirthmasService : IBirthmasService
     public ServerConfig? GetServer(ulong serverId)
     {
         using var db = new BirthmasContext();
-        return db.ServerConfigs.FirstOrDefault(s => s.ServerId == serverId);
+        return db.ServerConfigs
+            .Include(sc => sc.People)
+            .FirstOrDefault(s => s.ServerId == serverId);
     }
 }
