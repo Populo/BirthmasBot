@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.Design;
-using System.Timers;
+﻿using System.Timers;
 using Birthmas.Data;
 using Birthmas.Service;
 using Discord;
