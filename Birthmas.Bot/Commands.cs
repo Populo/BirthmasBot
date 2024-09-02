@@ -310,8 +310,10 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
         var builder = new StringBuilder();
         
         builder.AppendLine("```");
+        builder.AppendLine($"\u256d{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u252c{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u256e");
         builder.AppendLine(header);
-        builder.AppendLine(string.Concat(Enumerable.Repeat('-', header.Length)));
+
+        builder.AppendLine($"\u251c{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u007c{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u2524");
         var peopleSorted = births.People.OrderBy(p => p.Date.DayOfYear);
 
         foreach (var b in peopleSorted)
@@ -328,9 +330,10 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             birthday += leap ? "*" : string.Empty;
            
 
-            builder.AppendLine($"| {username.Username.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} |");
+            builder.AppendLine($"\u007c {username.Username.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
         }
 
+        builder.AppendLine($"\u2570{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u2534{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u256f");
         builder.Append("```");
 
         await arg.FollowupAsync(builder.ToString());
