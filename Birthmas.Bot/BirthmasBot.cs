@@ -37,6 +37,7 @@ public class BirthmasBot
         {
             today1Am = today1Am.AddDays(1);
         }
+
         var duration = today1Am - now;
         
         _timer = new Timer()
@@ -134,62 +135,71 @@ public class BirthmasBot
 
     private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
     {
-        // remove yesterdays birthday roles but only if were running at the proper time
-        if (DateTime.Now.Hour == 1)
+        try
         {
-            var yesterdaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today.AddDays(-1).Date);
-            if (yesterdaysBirthdays.Any())
+            // remove yesterdays birthday roles but only if were running at the proper time
+            if (DateTime.Now.Hour == 1)
             {
-                Parallel.ForEachAsync(yesterdaysBirthdays, async (birthedPerson, _) =>
+                var yesterdaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today.AddDays(-1).Date);
+                if (yesterdaysBirthdays.Any())
+                {
+                    Parallel.ForEachAsync(yesterdaysBirthdays, async (birthedPerson, _) =>
+                    {
+                        try
+                        {
+                            var servers = await BirthmasService.GetServersByUserAsync(birthedPerson.UserId);
+                            foreach (var server in servers)
+                            {
+                                await BirthmasService.RemoveBirthdayRoleFromUserAsync(server.ServerId, birthedPerson.UserId,
+                                    server.RoleId);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Error while removing old birthdays");
+                        }
+                    });
+                }
+            }
+
+            // add today's birthday roles
+            var todaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today);
+            if (todaysBirthdays.Any())
+            {
+                Parallel.ForEachAsync(todaysBirthdays, async (birthday, cancel) =>
                 {
                     try
                     {
-                        var servers = await BirthmasService.GetServersByUserAsync(birthedPerson.UserId);
-                        foreach (var server in servers)
+                        var servers = await BirthmasService.GetServersByUserAsync(birthday.UserId);
+                        var user = await Client.GetUserAsync(birthday.UserId)
+                                   ?? throw new Exception("Cannot get user");
+                        if (!servers.Any()) return;
+
+                        _ = Parallel.ForEachAsync(servers, cancel, async (server, cancel2) =>
                         {
-                            await BirthmasService.RemoveBirthdayRoleFromUserAsync(server.ServerId, birthedPerson.UserId, server.RoleId);
-                        }
+                            var channel = await Client.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
+                                          ?? throw new Exception("Cannot get channel from server");
+
+                            _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
+                            if (server.GiveRole)
+                            {
+                                _ = BirthmasService.GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
+                            }
+                        });
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error(ex, "Error while removing old birthdays");
+                        _logger.Error(ex, "Error occured while adding roles");
                     }
                 });
             }
         }
-        
-        // add today's birthday roles
-        var todaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today);
-        if (todaysBirthdays.Any())
+        catch (Exception ex)
         {
-            Parallel.ForEachAsync(todaysBirthdays, async (birthday, cancel) =>
-            {
-                try
-                {
-                    var servers = await BirthmasService.GetServersByUserAsync(birthday.UserId);
-                    var user = await Client.GetUserAsync(birthday.UserId)
-                        ?? throw new Exception("Cannot get user");
-                    if (!servers.Any()) return;
-
-                    _ = Parallel.ForEachAsync(servers, cancel, async (server, cancel2) =>
-                    {
-                        var channel = await Client.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
-                                      ?? throw new Exception("Cannot get channel from server");
-                        
-                        _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
-                        if (server.GiveRole)
-                        {
-                            _ = BirthmasService.GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
-                        }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Error occured while adding roles");
-                }
-            });
+            _logger.Error(ex);
         }
-        
+
+
         _timer.Interval = TimeSpan.FromDays(1).TotalMilliseconds;
     }
     
