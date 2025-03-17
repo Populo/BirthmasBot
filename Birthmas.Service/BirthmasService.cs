@@ -1,28 +1,30 @@
 ﻿using Birthmas.Data;
 using Discord;
 using Discord.Rest;
+using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using NLog;
+using Microsoft.Extensions.Logging;
 
 namespace Birthmas.Service;
 
 public class BirthmasService : IBirthmasService
 {
-    private DiscordRestClient Client { get; set; }
-    private readonly ILogger _logger = LogManager.GetCurrentClassLogger();
+    private readonly DiscordRestClient _restClient;
+    private readonly ILogger<BirthmasService> _logger;
+    private readonly DiscordSocketClient _socketClient;
 
-    public BirthmasService()
+    public BirthmasService(ILogger<BirthmasService> logger, DiscordRestClient restClient, DiscordSocketClient socketClient)
     {
-        Client = new DiscordRestClient();
-        Client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("BIRTHMAS_TOKEN")).Wait();
+        _logger = logger;
+        _restClient = restClient;
+        _socketClient = socketClient;
     }
  
     public List<Person> GetBirthdays(DateTime date)
     {
         using var db = new BirthmasContext();
         
-        _logger.Info($"Getting Birthdays for {date:d}");
+        _logger.LogInformation($"Getting Birthdays for {date:d}");
         return db.People.Where(b => b.Date.Day == date.Day && b.Date.Month == date.Month).ToList();
     }
 
@@ -35,15 +37,15 @@ public class BirthmasService : IBirthmasService
     // this is disgusting but i dont expect this bot to be used by more than 2 servers
     public async Task<List<ServerConfig>> GetServersByUserAsync(ulong userId)
     {
-        var user = await Client.GetUserAsync(userId);
-        _logger.Info($"Getting servers for {user.Username}");
+        var user = await _restClient.GetUserAsync(userId);
+        _logger.LogInformation($"Getting servers for {user.Username}");
         
         var db = new BirthmasContext();
         
         var result = new List<ServerConfig>();
         foreach (var server in db.ServerConfigs)
         {
-            var g = await Client.GetGuildAsync(server.ServerId);
+            var g = await _restClient.GetGuildAsync(server.ServerId);
             if (g == null) continue;
             
             var u = await g.GetUserAsync(userId);
@@ -55,14 +57,14 @@ public class BirthmasService : IBirthmasService
     
     public async Task GiveUserRoleAsync(ulong userId, ulong serverId, ulong roleId)
     {
-        var guild = await Client.GetGuildAsync(serverId) 
+        var guild = await _restClient.GetGuildAsync(serverId) 
                     ?? throw new Exception("Cannot get guild");
         var user = await guild.GetUserAsync(userId) 
                    ?? throw new Exception("Cannot get user");
         var role = guild.GetRole(roleId) 
                    ?? throw new Exception("Cannot get role");
         
-        _logger.Info($"Gave user {user.Username} the role {role.Name} in server {guild.Name}");
+        _logger.LogInformation($"Gave user {user.Username} the role {role.Name} in server {guild.Name}");
         await user.AddRoleAsync(role);
     }
 
@@ -92,7 +94,7 @@ public class BirthmasService : IBirthmasService
         birthday.Date = date;
         db.SaveChanges();
         
-        _logger.Info($"Added birthday {date:d} for {userId}");
+        _logger.LogInformation($"Added birthday {date:d} for {userId}");
         return birthday;
     }
 
@@ -116,12 +118,12 @@ public class BirthmasService : IBirthmasService
         
         db.SaveChanges();
 
-        _logger.Info($"Added server {serverId}");
+        _logger.LogInformation($"Added server {serverId}");
         return server;
     }
     public async Task RemoveBirthdayRoleFromUserAsync(ulong guildId, ulong userId, ulong roleId)
     {
-        var guild = await Client.GetGuildAsync(guildId)
+        var guild = await _restClient.GetGuildAsync(guildId)
                     ?? throw new Exception("Cannot get guild");
         var user = await guild.GetUserAsync(userId)
                     ?? throw new Exception("Cannot get user");
@@ -129,7 +131,7 @@ public class BirthmasService : IBirthmasService
                     ?? throw new Exception("Cannot get role");
         
         _ = user.RemoveRoleAsync(role);
-        _logger.Info($"Removed birthday role {role.Name} from {user.Username} in {guild.Name}");
+        _logger.LogInformation($"Removed birthday role {role.Name} from {user.Username} in {guild.Name}");
     }
 
     public Person? RemoveBirthday(ulong userId, ulong serverId)
@@ -144,7 +146,7 @@ public class BirthmasService : IBirthmasService
         db.People.Remove(birthday);
         db.SaveChanges();
         
-        _logger.Info($"Removed birthday for user {userId}");
+        _logger.LogInformation($"Removed birthday for user {userId}");
         return birthday;
     }
 
@@ -161,7 +163,7 @@ public class BirthmasService : IBirthmasService
         db.People.RemoveRange(server.People);
         db.SaveChanges();
         
-        _logger.Info($"Removed server {serverId}");
+        _logger.LogInformation($"Removed server {serverId}");
         return server;
     }
 
@@ -171,5 +173,50 @@ public class BirthmasService : IBirthmasService
         return db.ServerConfigs
             .Include(sc => sc.People)
             .FirstOrDefault(s => s.ServerId == serverId);
+    }
+    
+    public List<SocketGuildUser> GetPeopleWithBirthdayRole()
+    {
+        using var db = new BirthmasContext();
+        List<SocketGuildUser> result = [];
+        var servers = db.ServerConfigs;
+        foreach (var server in servers)
+        {
+            var guild = _socketClient.GetGuild(server.ServerId);
+            var role = guild.GetRole(server.RoleId);
+            var members = role.Members;
+            result.AddRange(members);
+        }
+
+        return result;
+    }
+
+    public List<Person> PurgeTheOutcasts()
+    {
+        using var db = new BirthmasContext();
+        List<Person> purged = [];
+
+        foreach (var person in db.People.Include(person => person.Server))
+        {
+            var guild = _socketClient.GetGuild(person.Server.ServerId);
+            var user = guild.GetUser(person.UserId);
+            if (null == user)
+            {
+                db.People.Remove(person);
+                purged.Add(person);
+            }
+        }
+        
+        db.SaveChanges();
+        return purged;
+    }
+
+    public void DownloadUsers()
+    {
+        foreach (var server in _socketClient.Guilds)
+        {
+            server.PurgeUserCache();
+            server.DownloadUsersAsync().Wait();
+        }
     }
 }

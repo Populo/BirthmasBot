@@ -4,16 +4,15 @@ using Birthmas.Service;
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
-using Humanizer;
-using NLog;
+using Microsoft.Extensions.Logging;
 
 namespace Birthmas.Bot;
 
-public class Commands(IBirthmasService service, DiscordRestClient client)
+public class Commands(IBirthmasService service, DiscordRestClient client, ILogger<BirthmasBot> logger)
 {
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
-    private IBirthmasService _service { get; set; } = service;
-    private DiscordRestClient _client { get; set; } = client;
+    private ILogger<BirthmasBot> Logger { get; set; } = logger;
+    private IBirthmasService Service { get; set; } = service;
+    private DiscordRestClient Client { get; set; } = client;
 
     #region command object
 
@@ -174,9 +173,9 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             MyBirthday
         };
 
-        Logger.Info($"Updating commands");
-        Logger.Trace(string.Join(" | ", commands.Select(c => c.Name)));
-        await _client.BulkOverwriteGlobalCommands(
+        Logger.LogInformation($"Updating commands");
+        Logger.LogTrace(string.Join(" | ", commands.Select(c => c.Name)));
+        await Client.BulkOverwriteGlobalCommands(
             // ReSharper disable once CoVariantArrayConversion
             commands.Select(b => b.Build()).ToArray());
 
@@ -187,7 +186,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     public async Task SetBirthdayAsync(SocketSlashCommand arg)
     {
         await arg.DeferAsync(ephemeral: true);
-        var server = _service.GetServer(arg.GuildId!.Value);
+        var server = Service.GetServer(arg.GuildId!.Value);
         if (null == server)
         {
             await arg.FollowupAsync("This server has not been configured yet.");
@@ -213,7 +212,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
 
         try
         {
-            var person = _service.AddBirthday(arg.User.Id, date, arg.GuildId!.Value);
+            var person = Service.AddBirthday(arg.User.Id, date, arg.GuildId!.Value);
         }
         catch
         {
@@ -249,8 +248,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             return;
         }
         
-        var exists = _service.GetServer(arg.GuildId!.Value) is not null;
-        _service.ConfigServer(arg.GuildId!.Value, roleBool, roleToGive, channel.Id);
+        var exists = Service.GetServer(arg.GuildId!.Value) is not null;
+        Service.ConfigServer(arg.GuildId!.Value, roleBool, roleToGive, channel.Id);
         
         if (exists)
         {
@@ -266,7 +265,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     {   
         await arg.DeferAsync(ephemeral: true);
         
-        _service.RemoveBirthday(arg.User.Id, arg.GuildId!.Value);
+        Service.RemoveBirthday(arg.User.Id, arg.GuildId!.Value);
         
         await arg.FollowupAsync("Your birthday has been removed.", ephemeral: true);
     }
@@ -275,7 +274,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     {
         await arg.DeferAsync(ephemeral: true);
         
-        _service.RemoveServer(arg.GuildId!.Value);
+        Service.RemoveServer(arg.GuildId!.Value);
         
         await arg.FollowupAsync("Your server has been removed.");
     }
@@ -283,8 +282,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     public async Task GetServerBirthdays(SocketSlashCommand arg)
     {
         await arg.DeferAsync();
-        var guild = await _client.GetGuildAsync(arg.GuildId!.Value);
-        var births = _service.GetServer(guild.Id);
+        var guild = await Client.GetGuildAsync(arg.GuildId!.Value);
+        var births = Service.GetServer(guild.Id);
         
         if (null == births)
         {
@@ -296,13 +295,23 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             await arg.FollowupAsync("No birthdays found.");
             return;
         }
-        int longestUsername = births.People
-            .Select(b => guild.GetUserAsync(b.UserId).Result.Nickname)
-            .OrderByDescending(p => p.Length)
+        Dictionary<ulong, string> people = [];
+        List<string> dates = [];
+        foreach (var b in births.People)
+        {
+            var user = await guild.GetUserAsync(b.UserId);
+            if (null == user) continue;
+            
+            var username = user.Nickname ?? user.Username;
+            people.Add(b.UserId, username);
+            dates.Add($"{b.Date:dddd MMMM dd, yyyy}");
+        }
+        int longestUsername = people
+            .OrderByDescending(p => p.Value.Length)
             .First()
+            .Value
             .Length;
-        int longestDate = births.People
-            .Select(b => $"{b.Date:dddd MMMM dd, yyyy}")
+        int longestDate = dates
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
@@ -320,8 +329,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
 
         foreach (var b in peopleSorted)
         {
-            var username = await guild.GetUserAsync(b.UserId)
-                           ?? throw new Exception("User not found");
+            var nickname = people[b.UserId];
             var currentYear = DateTime.Now.Year;
             var bday = b.Date;
 
@@ -332,7 +340,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
             birthday += leap ? "*" : string.Empty;
            
 
-            builder.AppendLine($"\u007c {username.Nickname.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
+            builder.AppendLine($"\u007c {nickname.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
         }
 
         builder.AppendLine($"\u2570{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u2534{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u256f");
@@ -344,7 +352,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client)
     public async Task MyBirthdayAsync(SocketSlashCommand arg)
     {
         await arg.DeferAsync(ephemeral: true);
-        var birthday = _service.GetBirthday(arg.User.Id);
+        var birthday = Service.GetBirthday(arg.User.Id);
         
         if (null == birthday) await arg.FollowupAsync("No birthday found. use /set-birthday to set your birthday.");
         else await arg.FollowupAsync($"Your birthday has been recorded as {birthday.Date:M}");

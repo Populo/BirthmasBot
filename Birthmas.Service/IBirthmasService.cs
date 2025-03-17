@@ -1,4 +1,5 @@
 ﻿using Birthmas.Data;
+using Discord.WebSocket;
 
 namespace Birthmas.Service;
 
@@ -14,4 +15,7 @@ public interface IBirthmasService
     public Person? RemoveBirthday(ulong userId, ulong serverId);
     public ServerConfig? RemoveServer(ulong serverId);
     public ServerConfig? GetServer(ulong serverId);
+    public List<SocketGuildUser> GetPeopleWithBirthdayRole();
+    public List<Person> PurgeTheOutcasts();
+    public void DownloadUsers();
 }
