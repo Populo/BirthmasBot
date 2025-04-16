@@ -304,7 +304,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             
             var username = user.Nickname ?? user.Username;
             people.Add(b.UserId, username);
-            dates.Add($"{b.Date:dddd MMMM dd, yyyy}");
+            var newDate = b.Date.AddYears(DateTime.Now.Year - b.Date.Year);
+            dates.Add($"{newDate:dddd MMMM dd, yyyy}");
         }
         int longestUsername = people
             .OrderByDescending(p => p.Value.Length)
@@ -315,8 +316,17 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
+
+        var personTitle = "Person";
+        var birthdayTitle = "Birthday";
         
-        var header = $"| {"Person".CenterString(longestUsername)} | {"Birthday".CenterString(longestDate)} |";
+        longestUsername = longestUsername < birthdayTitle.Length ? birthdayTitle.Length : longestUsername;
+        longestDate = longestDate < birthdayTitle.Length ? birthdayTitle.Length : longestDate;
+
+        var userHeader = personTitle.CenterString(longestUsername);
+        var birthdayHeader = birthdayTitle.CenterString(longestDate);
+        
+        var header = $"| {userHeader} | {birthdayHeader} |";
         
         var builder = new StringBuilder();
         
@@ -338,8 +348,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             
             var birthday = $"{bday:dddd MMMM dd, yyyy}";
             birthday += leap ? "*" : string.Empty;
-           
-
+            
             builder.AppendLine($"\u007c {nickname.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
         }
 

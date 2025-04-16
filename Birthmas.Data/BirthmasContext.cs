@@ -27,7 +27,7 @@ public class BirthmasContext : DbContext
                 Server = "pinas",
                 Database = "BirthdayBot",
                 UserID = "BirthmasBot",
-                Password = Environment.GetEnvironmentVariable("BirthmasBotDbPassword")
+                Password = File.ReadAllText("/run/secrets/dbPass")
             };
 
             optionsBuilder.UseMySql(connection.ConnectionString,
