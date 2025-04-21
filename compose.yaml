@@ -1,6 +1,7 @@
 ﻿services:
   birthmas.bot:
     image: birthmas.bot
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Birthmas.Bot/Dockerfile

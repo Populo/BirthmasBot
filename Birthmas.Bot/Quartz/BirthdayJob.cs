@@ -17,7 +17,7 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
             // remove people who are no longer in any servers
             await BirthmasService.DownloadUsers();
             var outcasts = BirthmasService.PurgeTheOutcasts();
-            if (outcasts.Any())
+            if (outcasts.Count != 0)
             {
                 _logger.LogInformation($"Purged {outcasts.Count} outcasts.");
             }
