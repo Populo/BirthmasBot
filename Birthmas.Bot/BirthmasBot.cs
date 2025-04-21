@@ -52,6 +52,7 @@ public class BirthmasBot
         };
         
         var token = await File.ReadAllTextAsync("/run/secrets/botToken");
+        token = token.Trim();
         switch (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"))
         {
             case "Release":
