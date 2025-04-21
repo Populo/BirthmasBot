@@ -17,5 +17,5 @@ public interface IBirthmasService
     public ServerConfig? GetServer(ulong serverId);
     public List<SocketGuildUser> GetPeopleWithBirthdayRole();
     public List<Person> PurgeTheOutcasts();
-    public void DownloadUsers();
+    public Task DownloadUsers();
 }

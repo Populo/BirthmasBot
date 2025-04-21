@@ -1,4 +1,4 @@
-﻿using System.Timers;
+﻿using Birthmas.Bot.Quartz;
 using Birthmas.Data;
 using Birthmas.Service;
 using Discord;
@@ -6,9 +6,12 @@ using Discord.Rest;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using Quartz;
+using Quartz.Impl;
+using Quartz.Simpl;
 using Serilog;
-using Timer = System.Timers.Timer;
 
 namespace Birthmas.Bot;
 
@@ -17,7 +20,7 @@ public class BirthmasBot
     public static Task Main(string[] args) => new BirthmasBot().Run(args);
     
     private readonly ILogger<BirthmasBot> _logger;
-    private readonly Timer _timer;
+    private IScheduler _scheduler;
     private DiscordSocketClient Client { get; set; }
     private DiscordRestClient RestClient { get; set; }
     private IBirthmasService BirthmasService { get; set; }
@@ -33,27 +36,6 @@ public class BirthmasBot
             ?? throw new Exception("Cannot get service from factory");
         _logger = Services.GetRequiredService<ILogger<BirthmasBot>>()
             ?? throw new Exception("Cannot get logger from factory");
-        
-        var now = DateTime.Now;
-        var today1Am = DateTime.Today.AddMinutes(30);
-        if (now > today1Am)
-        {
-            today1Am = today1Am.AddDays(1);
-        }
-
-        var duration = today1Am - now;
-#if DEBUG
-        duration = TimeSpan.FromMinutes(1);
-#endif
-        
-        
-        _timer = new Timer()
-        {
-            AutoReset = true,
-            Enabled = true,
-            Interval = duration.TotalMilliseconds
-        };
-        _timer.Elapsed += TimerOnElapsed;
     }
 
     private async Task Run(string[] args)
@@ -69,7 +51,7 @@ public class BirthmasBot
                 ?? throw new Exception("Cannot get error channel from discord")).SendMessageAsync($"{e.ExceptionObject}");
         };
         
-        if (args.Length == 0) throw new Exception("Include token in args");
+        var token = await File.ReadAllTextAsync("/run/secrets/botToken");
         switch (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"))
         {
             case "Release":
@@ -84,12 +66,28 @@ public class BirthmasBot
         Client.Log += ClientOnLog;
         Client.SlashCommandExecuted += ClientOnSlashCommandExecuted;
         
-        await Client.LoginAsync(TokenType.Bot, args[0]);
+        await Client.LoginAsync(TokenType.Bot, token);
         await Client.StartAsync();
-        _timer.Start();
 
         RestClient = Client.Rest;
+        
         _logger.LogInformation("Started");
+        _logger.LogInformation("Registering job");
+        
+        _scheduler = await StdSchedulerFactory.GetDefaultScheduler();
+        _scheduler.JobFactory = new MicrosoftDependencyInjectionJobFactory(Services, new OptionsWrapper<QuartzOptions>(null));
+        await _scheduler.Start();
+        var job = JobBuilder.Create<BirthdayJob>()
+            .WithIdentity("BirthmasCheckJob", "Birthmas")
+            .Build();
+        var trigger = TriggerBuilder.Create()
+            .WithIdentity("BirthmasCheckTrigger", "Birthmas")
+            .WithSchedule(CronScheduleBuilder.DailyAtHourAndMinute(2, 0))
+            //.WithSimpleSchedule(x => x.WithIntervalInSeconds(60)) // 1 minute (testing)
+            .Build();
+        await _scheduler.ScheduleJob(job, trigger);
+        Console.WriteLine($"Running in: {trigger.GetNextFireTimeUtc().Value.ToLocalTime()}");
+        
         await Task.Delay(-1);
     }
 
@@ -139,96 +137,19 @@ public class BirthmasBot
 
         return Task.CompletedTask;
     }
-
-    private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
-    {
-        try
-        {
-            // remove people who are no longer in any servers
-            BirthmasService.DownloadUsers();
-            var outcasts = BirthmasService.PurgeTheOutcasts();
-            if (outcasts.Any())
-            {
-                _logger.LogInformation($"Purged {outcasts.Count} outcasts.");
-            }
-            
-            // only do the real work in the morning morning
-            if (DateTime.Now.Hour != 0)
-            {
-                _logger.LogInformation("Not 1am.");
-                return;
-            }
-            
-            var roleHavers = BirthmasService.GetPeopleWithBirthdayRole();
-            if (roleHavers.Any())
-            {
-                Parallel.ForEachAsync(roleHavers, async (person, _) =>
-                {
-                    try
-                    {
-                        var server = BirthmasService.GetServer(person.Guild.Id)
-                                     ?? throw new Exception("Cannot get guild");
-                        await person.RemoveRoleAsync(server.RoleId);
-                        _logger.LogInformation($"Removed role from {person.Nickname} in {person.Guild.Name}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Error while removing old role from {person.Username} in {person.Guild.Name}");
-                    }
-                });
-            }
-            // add today's birthday roles
-            var todaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today);
-            if (todaysBirthdays.Any())
-            {
-                Parallel.ForEachAsync(todaysBirthdays, async (birthday, cancel) =>
-                {
-                    try
-                    {
-                        var servers = await BirthmasService.GetServersByUserAsync(birthday.UserId);
-                        var user = await Client.GetUserAsync(birthday.UserId)
-                                   ?? throw new Exception("Cannot get user");
-                        if (!servers.Any()) return;
-
-                        _ = Parallel.ForEachAsync(servers, cancel, async (server, cancel2) =>
-                        {
-                            var channel = await Client.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
-                                          ?? throw new Exception("Cannot get channel from server");
-
-                            _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
-                            if (server.GiveRole)
-                            {
-                                _ = BirthmasService.GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
-                            }
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error occured while adding roles");
-                    }
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occured while running.");
-        }
-
-
-        _timer.Interval = TimeSpan.FromHours(1).TotalMilliseconds;
-    }
     
     private IServiceProvider CreateProvider()
     {
         var config = new DiscordSocketConfig()
         {
-            GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMembers
+            GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMembers,
+            AlwaysDownloadUsers = true
         };
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose()
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
-            .WriteTo.File("logs/log.txt", 
+            .WriteTo.File("./logs/log.txt", 
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
@@ -249,7 +170,7 @@ public class BirthmasBot
             configuration.ClearProviders();
             configuration.AddSerilog();
         });
-
+        
         return collection.BuildServiceProvider();
     }
 }
