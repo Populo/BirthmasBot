@@ -20,20 +20,19 @@ public class BirthmasContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder = null)
     {
-        if (!optionsBuilder.IsConfigured)
+        if (optionsBuilder.IsConfigured) return;
+        
+        var connection = new MySqlConnectionStringBuilder
         {
-            var connection = new MySqlConnectionStringBuilder
-            {
-                Server = "pinas",
-                Database = "BirthdayBot",
-                UserID = "BirthmasBot",
-                Password = File.ReadAllText("/run/secrets/dbPass")
-            };
+            Server = "dale-server",
+            Database = "BirthdayBot",
+            UserID = "BirthmasBot",
+            Password = File.ReadAllText("/run/secrets/dbPass")
+        };
 
-            optionsBuilder.UseMySql(connection.ConnectionString,
-                ServerVersion.AutoDetect(connection.ConnectionString),
-                options => { options.EnableRetryOnFailure(20, TimeSpan.FromSeconds(10), new List<int>()); });
-        }
+        optionsBuilder.UseMySql(connection.ConnectionString,
+            ServerVersion.AutoDetect(connection.ConnectionString),
+            options => { options.EnableRetryOnFailure(20, TimeSpan.FromSeconds(10), new List<int>()); });
     }
 }
 
