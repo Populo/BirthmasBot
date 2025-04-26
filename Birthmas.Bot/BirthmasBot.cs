@@ -62,6 +62,12 @@ public class BirthmasBot
                 _logger.LogInformation("Environment: Dev");
                 break;
         }
+
+        using (var db = new BirthmasContext())
+        {
+            var servers = db.ServerConfigs.Count();
+            _logger.LogInformation($"Server count: {servers}");
+        }
         
         Client.Ready += new Commands(BirthmasService, Client.Rest, _logger).InitCommands;
         Client.Log += ClientOnLog;
