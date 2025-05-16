@@ -12,6 +12,12 @@ public class BirthmasService(
     DiscordSocketClient socketClient)
     : IBirthmasService
 {
+    public string GetBotVersion()
+    {
+        using var db = new BirthmasContext();
+        return db.Configs.FirstOrDefault(c => c.Name == "Version")?.Value ?? "0.0.0";
+    }
+
     public List<Person> GetBirthdays(DateTime date)
     {
         using var db = new BirthmasContext();

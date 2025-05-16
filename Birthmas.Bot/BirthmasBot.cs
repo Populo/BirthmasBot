@@ -86,6 +86,8 @@ public class BirthmasBot
     private async Task ClientOnReady()
     {
         await new Commands(BirthmasService, Client.Rest, _logger).InitCommands();
+
+        await Client.SetCustomStatusAsync(BirthmasService.GetBotVersion());
         
         _logger.LogInformation("Registering job");
         

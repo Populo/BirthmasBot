@@ -5,6 +5,7 @@ namespace Birthmas.Service;
 
 public interface IBirthmasService
 {
+    public string GetBotVersion();
     public List<Person> GetBirthdays(DateTime date);
     public Person? GetBirthday(ulong userId);
     public Task<List<ServerConfig>> GetServersByUserAsync(ulong userId);
