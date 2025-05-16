@@ -158,6 +158,24 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         Name = "my-birthday",
         Description = "See my birthday"
     };
+
+    private static readonly SlashCommandBuilder AnnounceBirthday = new()
+    {
+        Name = "announce-birthday",
+        Description = "Manually trigger birthday announcement",
+        DefaultMemberPermissions = GuildPermission.ManageGuild,
+        Options =
+        [
+            new SlashCommandOptionBuilder()
+            {
+                Name = "person",
+                Description = "Person to celebrate",
+                IsRequired = true,
+                Type = ApplicationCommandOptionType.User
+            },
+
+        ]
+    };
     
     #endregion
     
@@ -170,7 +188,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             RemoveBirthday,
             RemoveServer,
             ServerBirthdays,
-            MyBirthday
+            MyBirthday,
+            AnnounceBirthday
         };
 
         Logger.LogInformation($"Updating commands");
@@ -365,6 +384,25 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         
         if (null == birthday) await arg.FollowupAsync("No birthday found. use /set-birthday to set your birthday.");
         else await arg.FollowupAsync($"Your birthday has been recorded as {birthday.Date:M}");
+    }
+    
+    public async Task AnnounceBirthdayAsync(SocketSlashCommand arg)
+    {
+        try
+        {
+            await arg.DeferAsync(ephemeral: true);
+
+            var person = (SocketGuildUser)arg.Data.Options.First(o => o.Name == "person").Value;
+
+            await Service.PostBirthdayAnnouncementAsync(person.Id, arg.GuildId!.Value);
+
+            await arg.DeleteOriginalResponseAsync();
+        }
+        catch (Exception ex)
+        {
+            await arg.FollowupAsync(ex.Message);
+            Logger.LogError(ex, "Error occured while announcing birthday");
+        }
     }
     
     #endregion

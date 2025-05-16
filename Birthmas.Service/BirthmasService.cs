@@ -210,8 +210,52 @@ public class BirthmasService(
         foreach (var s in db.ServerConfigs)
         {
             var server = socketClient.GetGuild(s.ServerId);
+            if (null == server)
+            {
+                logger.LogWarning($"Server {s.ServerId} could not be found. Skipping download.");
+                continue;
+            }
             server.PurgeUserCache();
             await server.DownloadUsersAsync();
+        }
+    }
+
+    public async Task PostBirthdayAnnouncementAsync(Person person)
+    {
+        var servers = await GetServersByUserAsync(person.UserId);
+        
+        var user = await socketClient.GetUserAsync(person.UserId)
+                   ?? throw new Exception("Cannot get user");
+        if (servers.Count == 0) return;
+
+        _ = Parallel.ForEachAsync(servers, async (server, cancel) =>
+        {
+            var channel = await socketClient.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
+                          ?? throw new Exception("Cannot get channel from server");
+
+            _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
+            if (server.GiveRole)
+            {
+                _ = GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
+            }
+        });
+    }
+    
+    public async Task PostBirthdayAnnouncementAsync(ulong userId, ulong serverId)
+    {
+        var server = GetServer(serverId)
+            ?? throw new Exception("Server is not registered to bot. use /config-server first.");
+        
+        var user = await socketClient.GetUserAsync(userId)
+                   ?? throw new Exception("Cannot get user");
+
+        var channel = await socketClient.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
+                      ?? throw new Exception("Cannot get channel from server");
+
+        _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
+        if (server.GiveRole)
+        {
+            _ = GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
         }
     }
 }

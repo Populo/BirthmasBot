@@ -1,5 +1,4 @@
 ﻿using Birthmas.Service;
-using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Quartz;
@@ -48,22 +47,7 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
                 {
                     try
                     {
-                        var servers = await BirthmasService.GetServersByUserAsync(birthday.UserId);
-                        var user = await Client.GetUserAsync(birthday.UserId)
-                                   ?? throw new Exception("Cannot get user");
-                        if (!servers.Any()) return;
-
-                        _ = Parallel.ForEachAsync(servers, cancel, async (server, cancel2) =>
-                        {
-                            var channel = await Client.GetChannelAsync(server.AnnouncementChannelId) as ITextChannel
-                                          ?? throw new Exception("Cannot get channel from server");
-
-                            _ = channel.SendMessageAsync($"Happy birthday {user.Mention}!");
-                            if (server.GiveRole)
-                            {
-                                _ = BirthmasService.GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
-                            }
-                        });
+                        await BirthmasService.PostBirthdayAnnouncementAsync(birthday);
                     }
                     catch (Exception ex)
                     {

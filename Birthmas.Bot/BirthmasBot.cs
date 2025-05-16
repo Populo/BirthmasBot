@@ -63,13 +63,13 @@ public class BirthmasBot
                 break;
         }
 
-        using (var db = new BirthmasContext())
+        await using (var db = new BirthmasContext())
         {
             var servers = db.ServerConfigs.Count();
-            _logger.LogInformation($"Server count: {servers}");
+            _logger.LogInformation("Server count: {Servers}", servers);
         }
         
-        Client.Ready += new Commands(BirthmasService, Client.Rest, _logger).InitCommands;
+        Client.Ready += ClientOnReady;
         Client.Log += ClientOnLog;
         Client.SlashCommandExecuted += ClientOnSlashCommandExecuted;
         
@@ -79,6 +79,14 @@ public class BirthmasBot
         RestClient = Client.Rest;
         
         _logger.LogInformation("Started");
+        
+        await Task.Delay(-1);
+    }
+
+    private async Task ClientOnReady()
+    {
+        await new Commands(BirthmasService, Client.Rest, _logger).InitCommands();
+        
         _logger.LogInformation("Registering job");
         
         _scheduler = await StdSchedulerFactory.GetDefaultScheduler();
@@ -93,9 +101,6 @@ public class BirthmasBot
             //.WithSimpleSchedule(x => x.WithIntervalInSeconds(60)) // 1 minute (testing)
             .Build();
         await _scheduler.ScheduleJob(job, trigger);
-        Console.WriteLine($"Running in: {trigger.GetNextFireTimeUtc().Value.ToLocalTime()}");
-        
-        await Task.Delay(-1);
     }
 
     private async Task ClientOnSlashCommandExecuted(SocketSlashCommand arg)
@@ -107,40 +112,29 @@ public class BirthmasBot
         }
 
         _logger.LogInformation(
-            $"Command received: {arg.CommandName}\nin channel: {await Client.GetChannelAsync(arg.ChannelId!.Value)}\nin server: {Client.GetGuild(arg.GuildId!.Value).Name}\nfrom: {arg.User.Username}\n```json\nargs:{jsonArgs}\n```");
+            "Command received: {ArgCommandName}\nin channel: {GetChannelAsync}\nin server: {Name}\nfrom: {UserUsername}\n```json\nargs:{JsonArgs}\n```", arg.CommandName, await Client.GetChannelAsync(arg.ChannelId!.Value), Client.GetGuild(arg.GuildId!.Value).Name, arg.User.Username, jsonArgs);
 
         var commands = new Commands(BirthmasService, RestClient, _logger);
-        switch (arg.CommandName)
+        Task f = arg.CommandName switch
         {
-            case "set-birthday":
-                _ = commands.SetBirthdayAsync(arg);
-                break;
-            case "config-server":
-                _ = commands.SetServerAsync(arg);
-                break;
-            case "remove-birthday":
-                _ = commands.RemoveBirthdayAsync(arg);
-                break;
-            case "remove-server":
-                _ = commands.RemoveServerAsync(arg);
-                break;
-            case "server-birthdays":
-                _ = commands.GetServerBirthdays(arg);
-                break;
-            case "my-birthday":
-                _ = commands.MyBirthdayAsync(arg);
-                break;
-        }
+            "set-birthday" => commands.SetBirthdayAsync(arg),
+            "config-server" => commands.SetServerAsync(arg),
+            "remove-birthday" => commands.RemoveBirthdayAsync(arg),
+            "remove-server" => commands.RemoveServerAsync(arg),
+            "server-birthdays" => commands.GetServerBirthdays(arg),
+            "my-birthday" => commands.MyBirthdayAsync(arg),
+            "announce-birthday" => commands.AnnounceBirthdayAsync(arg),
+            _ => Task.CompletedTask
+        };
     }
 
     private Task ClientOnLog(LogMessage arg)
     {
         _logger.LogInformation(arg.Message);
-        if (null != arg.Exception)
-        {
-            _logger.LogError(arg.Exception.ToString());
-            _logger.LogError(arg.Exception.InnerException?.StackTrace);
-        }
+        if (null == arg.Exception) return Task.CompletedTask;
+        
+        _logger.LogError(arg.Exception.ToString());
+        _logger.LogError(arg.Exception.InnerException?.StackTrace);
 
         return Task.CompletedTask;
     }

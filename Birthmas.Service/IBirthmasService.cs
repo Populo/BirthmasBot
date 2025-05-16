@@ -18,4 +18,6 @@ public interface IBirthmasService
     public List<SocketGuildUser> GetPeopleWithBirthdayRole();
     public List<Person> PurgeTheOutcasts();
     public Task DownloadUsers();
+    public Task PostBirthdayAnnouncementAsync(Person person);
+    public Task PostBirthdayAnnouncementAsync(ulong userId, ulong serverId);
 }
