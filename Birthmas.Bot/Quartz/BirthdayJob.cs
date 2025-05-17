@@ -61,6 +61,6 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
             _logger.LogError(ex, "Error occured while running.");
         }
 
-        await Client.SetCustomStatusAsync($"{DateTime.Today:d}|v{BirthmasService.GetBotVersion()}");
+        await Client.SetCustomStatusAsync($"v{BirthmasService.GetBotVersion()} | {DateTime.Today:d}");
     }
 }
