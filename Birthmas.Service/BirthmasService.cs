@@ -23,7 +23,10 @@ public class BirthmasService(
         using var db = new BirthmasContext();
         
         logger.LogInformation($"Getting Birthdays for {date:d}");
-        return db.People.Where(b => b.Date.Day == date.Day && b.Date.Month == date.Month).ToList();
+        return db.People
+            .Where(b => b.Date.Day == date.Day && b.Date.Month == date.Month)
+            .Include(c => c.Server)
+            .ToList();
     }
 
     public Person? GetBirthday(ulong userId)
@@ -263,5 +266,12 @@ public class BirthmasService(
         {
             _ = GiveUserRoleAsync(user.Id, server.ServerId, server.RoleId);
         }
+    }
+
+    public string GetUserDisplayName(Person person)
+    {
+        var guild = socketClient.GetGuild(person.Server.ServerId);
+        var user = guild?.GetUser(person.UserId) ?? throw new Exception("Cannot get user");
+        return user.DisplayName;
     }
 }

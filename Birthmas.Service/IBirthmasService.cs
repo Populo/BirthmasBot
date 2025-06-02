@@ -21,4 +21,5 @@ public interface IBirthmasService
     public Task DownloadUsers();
     public Task PostBirthdayAnnouncementAsync(Person person);
     public Task PostBirthdayAnnouncementAsync(ulong userId, ulong serverId);
+    public string GetUserDisplayName(Person person);
 }

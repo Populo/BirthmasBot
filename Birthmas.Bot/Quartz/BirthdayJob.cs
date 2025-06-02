@@ -22,7 +22,7 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
             }
             
             var roleHavers = BirthmasService.GetPeopleWithBirthdayRole();
-            if (roleHavers.Any())
+            if (roleHavers.Count != 0)
             {
                 await Parallel.ForEachAsync(roleHavers, async (person, _) =>
                 {
@@ -41,19 +41,26 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
             }
             // add today's birthday roles
             var todaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today);
-            if (todaysBirthdays.Any())
+            if (todaysBirthdays.Count != 0)
             {
+                List<string> birthdays = new();
                 await Parallel.ForEachAsync(todaysBirthdays, async (birthday, cancel) =>
                 {
                     try
                     {
                         await BirthmasService.PostBirthdayAnnouncementAsync(birthday);
+                        birthdays.Add(BirthmasService.GetUserDisplayName(birthday));
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error occured while adding roles");
                     }
                 });
+                await Client.SetCustomStatusAsync($"Happy Birthday {string.Join(", ", birthdays)}!");
+            }
+            else
+            {
+                await Client.SetCustomStatusAsync($"v{BirthmasService.GetBotVersion()} | {DateTime.Today:d}");
             }
         }
         catch (Exception ex)
@@ -61,6 +68,6 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
             _logger.LogError(ex, "Error occured while running.");
         }
 
-        await Client.SetCustomStatusAsync($"v{BirthmasService.GetBotVersion()} | {DateTime.Today:d}");
+        
     }
 }

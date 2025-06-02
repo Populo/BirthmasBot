@@ -5,6 +5,7 @@ using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
+using Quartz;
 
 namespace Birthmas.Bot;
 
@@ -177,6 +178,13 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         ]
     };
     
+    private static readonly SlashCommandBuilder ForceBirthdayCheck = new()
+    {
+        Name = "force",
+        Description = "force check for birthdays",
+        DefaultMemberPermissions = GuildPermission.Administrator
+    };
+    
     #endregion
     
     public async Task InitCommands()
@@ -189,7 +197,8 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             RemoveServer,
             ServerBirthdays,
             MyBirthday,
-            AnnounceBirthday
+            AnnounceBirthday,
+            ForceBirthdayCheck
         };
 
         Logger.LogInformation($"Updating commands");
@@ -403,6 +412,18 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             await arg.FollowupAsync(ex.Message);
             Logger.LogError(ex, "Error occured while announcing birthday");
         }
+    }
+
+    public async Task ForceBirthdayCheckAsync(SocketSlashCommand arg, IScheduler scheduler, ITrigger trigger)
+    {
+        if (arg.User.Id != 191051620430249984)
+        {
+            await arg.RespondAsync("Only Dale can use this command.", ephemeral: true);
+            return;
+        }
+
+        await scheduler.TriggerJob(trigger.JobKey);
+        await arg.RespondAsync("Birthday check triggered.", ephemeral: true);
     }
     
     #endregion

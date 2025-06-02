@@ -21,6 +21,8 @@ public class BirthmasBot
     
     private readonly ILogger<BirthmasBot> _logger;
     private IScheduler _scheduler;
+    private ITrigger _trigger;
+    
     private DiscordSocketClient Client { get; set; }
     private DiscordRestClient RestClient { get; set; }
     private IBirthmasService BirthmasService { get; set; }
@@ -97,12 +99,12 @@ public class BirthmasBot
         var job = JobBuilder.Create<BirthdayJob>()
             .WithIdentity("BirthmasCheckJob", "Birthmas")
             .Build();
-        var trigger = TriggerBuilder.Create()
+        _trigger = TriggerBuilder.Create()
             .WithIdentity("BirthmasCheckTrigger", "Birthmas")
             .WithSchedule(CronScheduleBuilder.DailyAtHourAndMinute(2, 0))
             //.WithSimpleSchedule(x => x.WithIntervalInSeconds(60)) // 1 minute (testing)
             .Build();
-        await _scheduler.ScheduleJob(job, trigger);
+        await _scheduler.ScheduleJob(job, _trigger);
     }
 
     private async Task ClientOnSlashCommandExecuted(SocketSlashCommand arg)
@@ -126,6 +128,7 @@ public class BirthmasBot
             "server-birthdays" => commands.GetServerBirthdays(arg),
             "my-birthday" => commands.MyBirthdayAsync(arg),
             "announce-birthday" => commands.AnnounceBirthdayAsync(arg),
+            "force" => commands.ForceBirthdayCheckAsync(arg, _scheduler, _trigger),
             _ => Task.CompletedTask
         };
     }
