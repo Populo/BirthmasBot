@@ -21,7 +21,7 @@ public class BirthmasBot
     
     private readonly ILogger<BirthmasBot> _logger;
     private IScheduler _scheduler;
-    private ITrigger _trigger;
+    private ITrigger _birthTrigger;
     
     private DiscordSocketClient Client { get; set; }
     private DiscordRestClient RestClient { get; set; }
@@ -96,15 +96,30 @@ public class BirthmasBot
         _scheduler = await StdSchedulerFactory.GetDefaultScheduler();
         _scheduler.JobFactory = new MicrosoftDependencyInjectionJobFactory(Services, new OptionsWrapper<QuartzOptions>(null));
         await _scheduler.Start();
-        var job = JobBuilder.Create<BirthdayJob>()
+        var birthJob = JobBuilder.Create<BirthdayJob>()
             .WithIdentity("BirthmasCheckJob", "Birthmas")
             .Build();
-        _trigger = TriggerBuilder.Create()
+        _birthTrigger = TriggerBuilder.Create()
             .WithIdentity("BirthmasCheckTrigger", "Birthmas")
             .WithSchedule(CronScheduleBuilder.DailyAtHourAndMinute(2, 0))
             //.WithSimpleSchedule(x => x.WithIntervalInSeconds(60)) // 1 minute (testing)
             .Build();
-        await _scheduler.ScheduleJob(job, _trigger);
+
+        var statusJob = JobBuilder.Create<StatusJob>()
+            .WithIdentity("StatusJob", "Birthmas")
+            .Build();
+        var statusTrigger = TriggerBuilder.Create()
+            .WithIdentity("StatusTrigger", "Birthmas")
+            .WithSimpleSchedule(x =>
+            {
+                x.WithIntervalInMinutes(30);
+                //x.WithIntervalInMinutes(1); // testing
+                x.RepeatForever();
+            })
+            .Build();
+        
+        await _scheduler.ScheduleJob(birthJob, _birthTrigger);
+        await _scheduler.ScheduleJob(statusJob, statusTrigger);
     }
 
     private async Task ClientOnSlashCommandExecuted(SocketSlashCommand arg)
@@ -128,7 +143,7 @@ public class BirthmasBot
             "server-birthdays" => commands.GetServerBirthdays(arg),
             "my-birthday" => commands.MyBirthdayAsync(arg),
             "announce-birthday" => commands.AnnounceBirthdayAsync(arg),
-            "force" => commands.ForceBirthdayCheckAsync(arg, _scheduler, _trigger),
+            "force" => commands.ForceBirthdayCheckAsync(arg, _scheduler, _birthTrigger),
             _ => Task.CompletedTask
         };
     }

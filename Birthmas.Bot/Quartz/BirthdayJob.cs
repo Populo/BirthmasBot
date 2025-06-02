@@ -67,7 +67,5 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
         {
             _logger.LogError(ex, "Error occured while running.");
         }
-
-        
     }
 }

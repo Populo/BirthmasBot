@@ -274,4 +274,38 @@ public class BirthmasService(
         var user = guild?.GetUser(person.UserId) ?? throw new Exception("Cannot get user");
         return user.DisplayName;
     }
+
+    public string[] GetNextBirthday()
+    {
+        using var db = new BirthmasContext();
+        
+        var today = DateTime.Today;
+        int yearOffset = today.Year - 1972;
+        today = today.AddYears(yearOffset * -1);
+        
+        Person next;
+
+        var remainingBDays = db.People
+            .Include(x => x.Server)
+            .Where(p => p.Date > today);
+        
+        if (remainingBDays.Any())
+        {
+            next = remainingBDays.OrderBy(p => p.Date).First();
+        }
+        else
+        {
+            next = db.People
+                .Include(x => x.Server)
+                .OrderBy(p => p.Date)
+                .First();
+        }
+        
+        var displayName = GetUserDisplayName(next);
+
+        return
+        [
+            displayName, next.Date.ToString("MM/dd")
+        ];
+    }
 }

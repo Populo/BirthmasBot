@@ -22,4 +22,5 @@ public interface IBirthmasService
     public Task PostBirthdayAnnouncementAsync(Person person);
     public Task PostBirthdayAnnouncementAsync(ulong userId, ulong serverId);
     public string GetUserDisplayName(Person person);
+    public string[] GetNextBirthday();
 }
