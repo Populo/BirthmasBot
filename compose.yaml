@@ -1,6 +1,7 @@
 ﻿services:
   birthmas.bot:
     image: birthmas.bot
+    container_name: Birthmas
     restart: unless-stopped
     extra_hosts:
       - "dale-server:192.168.1.252"
