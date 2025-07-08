@@ -4,7 +4,7 @@
     container_name: Birthmas
     restart: unless-stopped
     extra_hosts:
-      - "dale-server:192.168.1.252"
+      - "dale-server:172.17.0.1"
     build:
       context: .
       dockerfile: Birthmas.Bot/Dockerfile
