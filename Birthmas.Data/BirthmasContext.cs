@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 
 namespace Birthmas.Data;
 
@@ -22,17 +22,24 @@ public class BirthmasContext : DbContext
     {
         if (optionsBuilder.IsConfigured) return;
         
-        var connection = new MySqlConnectionStringBuilder
+        var connectionString = new SqlConnectionStringBuilder
         {
-            Server = "dale-server",
-            Database = "BirthdayBot",
-            UserID = "BirthmasBot",
-            Password = File.ReadAllText("/run/secrets/dbPass")
-        };
+            DataSource = "dale-server",  // or "dale-server\\INSTANCENAME" if using named instance
+            InitialCatalog = "db_birthmasbot_prod",
+            UserID = "user_birthmasbot_prod",
+            Password = File.ReadAllText("/run/secrets/dbPass"),
+            TrustServerCertificate = true,  // Add this if you have certificate issues
+            Encrypt = true  // SQL Server defaults to encrypted connections
+        }.ConnectionString;
 
-        optionsBuilder.UseMySql(connection.ConnectionString,
-            ServerVersion.AutoDetect(connection.ConnectionString),
-            options => { options.EnableRetryOnFailure(20, TimeSpan.FromSeconds(10), new List<int>()); });
+        optionsBuilder.UseSqlServer(connectionString,
+            options => { 
+                options.EnableRetryOnFailure(
+                    maxRetryCount: 20, 
+                    maxRetryDelay: TimeSpan.FromSeconds(10), 
+                    errorNumbersToAdd: null
+                ); 
+            });
     }
 }
 

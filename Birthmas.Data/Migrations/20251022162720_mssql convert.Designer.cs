@@ -12,27 +12,27 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Birthmas.Data.Migrations
 {
     [DbContext(typeof(BirthmasContext))]
-    [Migration("20240901163002_redo3")]
-    partial class redo3
+    [Migration("20251022162720_mssql convert")]
+    partial class mssqlconvert
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.8")
-                .HasAnnotation("Relational:MaxIdentifierLength", 64);
+                .HasAnnotation("ProductVersion", "8.0.21")
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
-            MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.Entity("Birthmas.Data.Config", b =>
                 {
                     b.Property<string>("Name")
-                        .HasColumnType("varchar(255)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Name");
 
@@ -43,16 +43,16 @@ namespace Birthmas.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("Date")
-                        .HasColumnType("datetime(6)");
+                        .HasColumnType("datetime2");
 
-                    b.Property<ulong>("ServerId")
-                        .HasColumnType("bigint unsigned");
+                    b.Property<decimal>("ServerId")
+                        .HasColumnType("decimal(20,0)");
 
-                    b.Property<ulong>("UserId")
-                        .HasColumnType("bigint unsigned");
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("decimal(20,0)");
 
                     b.HasKey("Id");
 
@@ -63,20 +63,20 @@ namespace Birthmas.Data.Migrations
 
             modelBuilder.Entity("Birthmas.Data.ServerConfig", b =>
                 {
-                    b.Property<ulong>("ServerId")
+                    b.Property<decimal>("ServerId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned");
+                        .HasColumnType("decimal(20,0)");
 
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<ulong>("ServerId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<decimal>("ServerId"));
 
-                    b.Property<ulong>("AnnouncementChannelId")
-                        .HasColumnType("bigint unsigned");
+                    b.Property<decimal>("AnnouncementChannelId")
+                        .HasColumnType("decimal(20,0)");
 
                     b.Property<bool>("GiveRole")
-                        .HasColumnType("tinyint(1)");
+                        .HasColumnType("bit");
 
-                    b.Property<ulong>("RoleId")
-                        .HasColumnType("bigint unsigned");
+                    b.Property<decimal>("RoleId")
+                        .HasColumnType("decimal(20,0)");
 
                     b.HasKey("ServerId");
 
