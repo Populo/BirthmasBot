@@ -1,4 +1,5 @@
-﻿using Birthmas.Service;
+﻿using Birthmas.Bot.Helpers;
+using Birthmas.Service;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Quartz;
@@ -13,34 +14,24 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
     {
         try
         {
-            // remove people who are no longer in any servers
-            await BirthmasService.DownloadUsers();
-            var outcasts = BirthmasService.PurgeTheOutcasts();
-            if (outcasts.Count != 0)
-            {
-                _logger.LogInformation($"Purged {outcasts.Count} outcasts.");
-            }
-            
-            var roleHavers = BirthmasService.GetPeopleWithBirthdayRole();
+            var roleHavers = await BirthmasService.GetPeopleWithBirthdayRole();
             if (roleHavers.Count != 0)
             {
                 await Parallel.ForEachAsync(roleHavers, async (person, _) =>
                 {
                     try
                     {
-                        var server = BirthmasService.GetServer(person.Guild.Id)
-                                     ?? throw new Exception("Cannot get guild");
-                        await person.RemoveRoleAsync(server.RoleId);
-                        _logger.LogInformation($"Removed role from {person.Nickname} in {person.Guild.Name}");
+                        await BirthmasService.RemoveBirthdayRoleFromUserAsync(person.Id);
+                        _logger.LogInformation($"Removed role from {person.Nickname}");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"Error while removing old role from {person.Username} in {person.Guild.Name}");
+                        _logger.LogError(ex, $"Error while removing old role from {person.Username}");
                     }
                 });
             }
             // add today's birthday roles
-            var todaysBirthdays = BirthmasService.GetBirthdays(DateTime.Today);
+            var todaysBirthdays = BirthmasService.GetBirthdaysForDate(DateOnly.FromDateTime(DateTime.Today));
             if (todaysBirthdays.Count != 0)
             {
                 List<string> birthdays = new();
@@ -49,7 +40,7 @@ public class BirthdayJob(DiscordSocketClient Client,  IBirthmasService BirthmasS
                     try
                     {
                         await BirthmasService.PostBirthdayAnnouncementAsync(birthday);
-                        birthdays.Add(BirthmasService.GetUserDisplayName(birthday));
+                        birthdays.Add(await BirthmasService.GetUserDisplayName(birthday));
                     }
                     catch (Exception ex)
                     {

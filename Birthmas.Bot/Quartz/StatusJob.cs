@@ -10,7 +10,7 @@ public class StatusJob(DiscordSocketClient client,  IBirthmasService birthmasSer
     public async Task Execute(IJobExecutionContext context)
     {
         // dont change if it is someones birthday
-        if (birthmasService.GetBirthdays(DateTime.Today).Count != 0) return;
+        if (birthmasService.GetBirthdaysForDate(DateOnly.FromDateTime(DateTime.Today)).Count != 0) return;
         
         string[] statuses =
         [
@@ -23,8 +23,8 @@ public class StatusJob(DiscordSocketClient client,  IBirthmasService birthmasSer
 
         if (newStatus == "nextbirthday")
         {
-            var nextBirthday = birthmasService.GetNextBirthday();
-            newStatus = $"Next: {nextBirthday[0]} on {nextBirthday[1]}";
+            var nextBirthday = await birthmasService.GetNextBirthday();
+            newStatus = $"Next: {nextBirthday.Name} on {nextBirthday.StatusString}";
         }
         
         await client.SetCustomStatusAsync(newStatus);

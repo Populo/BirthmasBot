@@ -38,62 +38,15 @@ namespace Birthmas.Data.Migrations
 
             modelBuilder.Entity("Birthmas.Data.Person", b =>
                 {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("ServerId")
-                        .HasColumnType("decimal(20,0)");
-
                     b.Property<decimal>("UserId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.HasKey("Id");
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
 
-                    b.HasIndex("ServerId");
+                    b.HasKey("UserId");
 
                     b.ToTable("People");
-                });
-
-            modelBuilder.Entity("Birthmas.Data.ServerConfig", b =>
-                {
-                    b.Property<decimal>("ServerId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("decimal(20,0)");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<decimal>("ServerId"));
-
-                    b.Property<decimal>("AnnouncementChannelId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<bool>("GiveRole")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("RoleId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.HasKey("ServerId");
-
-                    b.ToTable("ServerConfigs");
-                });
-
-            modelBuilder.Entity("Birthmas.Data.Person", b =>
-                {
-                    b.HasOne("Birthmas.Data.ServerConfig", "Server")
-                        .WithMany("People")
-                        .HasForeignKey("ServerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Server");
-                });
-
-            modelBuilder.Entity("Birthmas.Data.ServerConfig", b =>
-                {
-                    b.Navigation("People");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Birthmas.Bot.Modules;
+using Birthmas.Data;
 using Birthmas.Service;
 using Discord;
 using Discord.Rest;
@@ -9,11 +10,11 @@ using Quartz;
 
 namespace Birthmas.Bot;
 
-public class Commands(IBirthmasService service, DiscordRestClient client, ILogger<BirthmasBot> logger)
+public class Commands(IBirthmasService service, DiscordSocketClient client, ILogger<BirthmasBot> logger, BirthmasContext db)
 {
     private ILogger<BirthmasBot> Logger { get; set; } = logger;
     private IBirthmasService Service { get; set; } = service;
-    private DiscordRestClient Client { get; set; } = client;
+    private DiscordSocketClient Client { get; set; } = client;
 
     #region command object
 
@@ -103,49 +104,11 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             }
         ]
     };
-
-    private static readonly SlashCommandBuilder ConfigServer = new()
-    {
-        Name = "config-server",
-        Description = "Configure your server",
-        DefaultMemberPermissions = GuildPermission.ManageGuild,
-        Options = 
-            [
-                new SlashCommandOptionBuilder()
-                {
-                    Name = "announcementchannel",
-                    Description = "Channel to announce birthday in",
-                    IsRequired = true,
-                    Type = ApplicationCommandOptionType.Channel
-                },
-                new SlashCommandOptionBuilder()
-                {
-                    Name = "giverole",
-                    Description = "Give the birthday person a special role?",
-                    IsRequired = true,
-                    Type = ApplicationCommandOptionType.Boolean
-                },
-                new SlashCommandOptionBuilder()
-                {
-                    Name = "roletogive",
-                    Description = "Role to give the birthday person",
-                    IsRequired = false,
-                    Type = ApplicationCommandOptionType.Role
-                }
-            ]
-    };
-
+    
     private static readonly SlashCommandBuilder RemoveBirthday = new()
     {
         Name = "remove-birthday",
         Description = "Remove your birthday from the list"
-    };
-
-    private static readonly SlashCommandBuilder RemoveServer = new()
-    {
-        Name = "remove-server",
-        Description = "Remove your server",
-        DefaultMemberPermissions = GuildPermission.ManageGuild,
     };
 
     private static readonly SlashCommandBuilder ServerBirthdays = new()
@@ -192,9 +155,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         List<SlashCommandBuilder> commands = new()
         {
             SetBirthday,
-            ConfigServer,
             RemoveBirthday,
-            RemoveServer,
             ServerBirthdays,
             MyBirthday,
             AnnounceBirthday,
@@ -203,7 +164,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
 
         Logger.LogInformation($"Updating commands");
         Logger.LogTrace(string.Join(" | ", commands.Select(c => c.Name)));
-        await Client.BulkOverwriteGlobalCommands(
+        await Client.BulkOverwriteGlobalApplicationCommandsAsync(
             // ReSharper disable once CoVariantArrayConversion
             commands.Select(b => b.Build()).ToArray());
 
@@ -214,12 +175,6 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
     public async Task SetBirthdayAsync(SocketSlashCommand arg)
     {
         await arg.DeferAsync(ephemeral: true);
-        var server = Service.GetServer(arg.GuildId!.Value);
-        if (null == server)
-        {
-            await arg.FollowupAsync("This server has not been configured yet.");
-            return;
-        }
 
         var monthL = (long)arg.Data.Options.First(o => o.Name == "month").Value;
         var dayL = (long)arg.Data.Options.First(o => o.Name == "day").Value;
@@ -227,10 +182,10 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         var month = Convert.ToInt32(monthL);
         var day = Convert.ToInt32(dayL);
 
-        DateTime date;
+        DateOnly date;
         try
         {
-            date = new DateTime(1972, month, day);
+            date = new DateOnly(1972, month, day);
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -238,109 +193,37 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
             return;
         }
 
-        try
-        {
-            var person = Service.AddBirthday(arg.User.Id, date, arg.GuildId!.Value);
-        }
-        catch
-        {
-            await arg.FollowupAsync("This server has not been configured yet.");
-            return;
-        }
+        Service.AddBirthday(arg.User.Id, date);
         
         _ = arg.FollowupAsync($"Your birthday has been recorded as {date:M}");
-    }
-    
-    public async Task SetServerAsync(SocketSlashCommand arg)
-    {
-        await arg.DeferAsync(ephemeral: true);
-        
-        var channel = (SocketChannel)arg.Data.Options.First(o => o.Name == "announcementchannel").Value;
-        var roleBool = (bool)arg.Data.Options.First(o => o.Name == "giverole").Value;
-        var roleToGiveParam = arg.Data.Options.FirstOrDefault(o => o.Name == "roletogive");
-
-        ulong roleToGive = 0;
-        if (roleBool && null != roleToGiveParam)
-        {
-            roleToGive = Convert.ToUInt64(((IRole)roleToGiveParam.Value).Id);
-        }
-        else if (roleBool && null == roleToGiveParam)
-        {
-            await arg.FollowupAsync("Must give a role if GiveRole parameter is true");
-            return;
-        }
-
-        if (channel is SocketVoiceChannel)
-        {
-            await arg.FollowupAsync("Please specify a text channel");
-            return;
-        }
-        
-        var exists = Service.GetServer(arg.GuildId!.Value) is not null;
-        Service.ConfigServer(arg.GuildId!.Value, roleBool, roleToGive, channel.Id);
-        
-        if (exists)
-        {
-            await arg.FollowupAsync("Server config updated.");
-        }
-        else
-        {
-            await arg.FollowupAsync("Server added.");
-        }
     }
     
     public async Task RemoveBirthdayAsync(SocketSlashCommand arg)
     {   
         await arg.DeferAsync(ephemeral: true);
         
-        Service.RemoveBirthday(arg.User.Id, arg.GuildId!.Value);
+        Service.RemoveBirthday(arg.User.Id);
         
         await arg.FollowupAsync("Your birthday has been removed.", ephemeral: true);
-    }
-    
-    public async Task RemoveServerAsync(SocketSlashCommand arg)
-    {
-        await arg.DeferAsync(ephemeral: true);
-        
-        Service.RemoveServer(arg.GuildId!.Value);
-        
-        await arg.FollowupAsync("Your server has been removed.");
     }
     
     public async Task GetServerBirthdays(SocketSlashCommand arg)
     {
         await arg.DeferAsync();
-        var guild = await Client.GetGuildAsync(arg.GuildId!.Value);
-        var births = Service.GetServer(guild.Id);
+        var bdays = await Service.GetServerBirthdays();
         
-        if (null == births)
-        {
-            await arg.FollowupAsync("This server has not been configured yet.");
-            return;
-        }
-        if (!births.People.Any())
+        if (!bdays.Any())
         {
             await arg.FollowupAsync("No birthdays found.");
             return;
         }
-        Dictionary<ulong, string> people = [];
-        List<string> dates = [];
-        foreach (var b in births.People)
-        {
-            var user = await guild.GetUserAsync(b.UserId);
-            if (null == user) continue;
-            
-            var username = user.Nickname ?? user.Username;
-            people.Add(b.UserId, username);
-            var newDate = b.Date.AddYears(DateTime.Now.Year - b.Date.Year);
-            dates.Add($"{newDate:dddd MMMM dd, yyyy}");
-        }
-        int longestUsername = people
-            .OrderByDescending(p => p.Value.Length)
+        int longestUsername = bdays
+            .Select(b => b.Name)
+            .OrderByDescending(p => p.Length)
             .First()
-            .Value
             .Length;
-        int longestDate = dates
+        int longestDate = bdays
+            .Select(b => b.TableString)
             .OrderByDescending(p => p.Length)
             .First()
             .Length;
@@ -363,21 +246,15 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
         builder.AppendLine(header);
 
         builder.AppendLine($"\u251c{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u007c{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u2524");
-        var peopleSorted = births.People.OrderBy(p => p.Date.DayOfYear);
+        var peopleSorted = bdays.OrderBy(p => p.Birthday);
 
         foreach (var b in peopleSorted)
         {
-            var nickname = people[b.UserId];
-            var currentYear = DateTime.Now.Year;
-            var bday = b.Date;
-
-            var leap = bday is { Month: 2, Day: 29 };
-            bday = bday.AddYears(currentYear - bday.Year);
-            
-            var birthday = $"{bday:dddd MMMM dd, yyyy}";
+            var leap = b.Birthday is { Month: 2, Day: 29 };
+            var birthday = b.TableString;
             birthday += leap ? "*" : string.Empty;
             
-            builder.AppendLine($"\u007c {nickname.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
+            builder.AppendLine($"\u007c {b.Name.CenterString(longestUsername)} | {birthday.CenterString(longestDate)} \u007c");
         }
 
         builder.AppendLine($"\u2570{string.Concat(Enumerable.Repeat('\u2015', longestUsername + 2))}\u2534{string.Concat(Enumerable.Repeat('\u2015', longestDate + 2))}\u256f");
@@ -403,7 +280,7 @@ public class Commands(IBirthmasService service, DiscordRestClient client, ILogge
 
             var person = (SocketGuildUser)arg.Data.Options.First(o => o.Name == "person").Value;
 
-            await Service.PostBirthdayAnnouncementAsync(person.Id, arg.GuildId!.Value);
+            await Service.PostBirthdayAnnouncementAsync(person.Id);
 
             await arg.DeleteOriginalResponseAsync();
         }

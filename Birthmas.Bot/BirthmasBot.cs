@@ -1,6 +1,9 @@
-﻿using Birthmas.Bot.Quartz;
+﻿using System.Text;
+using Birthmas.Bot.Helpers;
+using Birthmas.Bot.Quartz;
 using Birthmas.Data;
 using Birthmas.Service;
+using Birthmas.Service.Models;
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
@@ -19,57 +22,41 @@ public class BirthmasBot
 {
     public static Task Main(string[] args) => new BirthmasBot().Run(args);
     
-    private readonly ILogger<BirthmasBot> _logger;
+    private ILogger<BirthmasBot> _logger;
     private IScheduler _scheduler;
     private ITrigger _birthTrigger;
     
     private DiscordSocketClient Client { get; set; }
-    private DiscordRestClient RestClient { get; set; }
     private IBirthmasService BirthmasService { get; set; }
     private IServiceProvider Services { get; set; }
-
-    private BirthmasBot()
-    {
-        Services = CreateProvider();
-
-        Client = Services.GetRequiredService<DiscordSocketClient>()
-            ?? throw new Exception("Cannot get client from factory");
-        BirthmasService = Services.GetRequiredService<IBirthmasService>()
-            ?? throw new Exception("Cannot get service from factory");
-        _logger = Services.GetRequiredService<ILogger<BirthmasBot>>()
-            ?? throw new Exception("Cannot get logger from factory");
-    }
+    private BirthmasContext Db { get; set; }
 
     private async Task Run(string[] args)
     {
+        Services = CreateProvider();
+
+        await Services.GetRequiredService<DatabaseInitializer>().InitializeAsync();
+        var config = Services.GetRequiredService<BotConfig>();
+        
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            using var db = new BirthmasContext();
-            var channelId = db.Configs.First(c => c.Name == "ErrorChannel").Value
-                ?? throw new Exception("Cannot get error channel from config");
-            
+            var channelId = config.ErrorChannelId;
             _logger.LogError($"Unhandled exception occured: {e.ExceptionObject}");
-            (Client.GetChannelAsync(ulong.Parse(channelId)).Result as SocketTextChannel
+            (Client.GetChannelAsync(channelId).Result as SocketTextChannel
                 ?? throw new Exception("Cannot get error channel from discord")).SendMessageAsync($"{e.ExceptionObject}");
         };
         
-        var token = await File.ReadAllTextAsync("/run/secrets/botToken");
+        Client = Services.GetRequiredService<DiscordSocketClient>()
+                 ?? throw new Exception("Cannot get client from factory");
+        BirthmasService = Services.GetRequiredService<IBirthmasService>()
+                          ?? throw new Exception("Cannot get service from factory");
+        Db = Services.GetRequiredService<BirthmasContext>()
+             ?? throw new Exception("Cannot get db from factory");
+        _logger = Services.GetRequiredService<ILogger<BirthmasBot>>()
+                  ?? throw new Exception("Cannot get logger from factory");
+        
+        var token = Environment.GetEnvironmentVariable("BotToken")!.Trim();
         token = token.Trim();
-        switch (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"))
-        {
-            case "Release":
-                _logger.LogInformation("Environment: Prod");
-                break;
-            case "Develop":
-                _logger.LogInformation("Environment: Dev");
-                break;
-        }
-
-        await using (var db = new BirthmasContext())
-        {
-            var servers = db.ServerConfigs.Count();
-            _logger.LogInformation("Server count: {Servers}", servers);
-        }
         
         Client.Ready += ClientOnReady;
         Client.Log += ClientOnLog;
@@ -77,8 +64,6 @@ public class BirthmasBot
         
         await Client.LoginAsync(TokenType.Bot, token);
         await Client.StartAsync();
-
-        RestClient = Client.Rest;
         
         _logger.LogInformation("Started");
         
@@ -87,7 +72,7 @@ public class BirthmasBot
 
     private async Task ClientOnReady()
     {
-        await new Commands(BirthmasService, Client.Rest, _logger).InitCommands();
+        await new Commands(BirthmasService, Client, _logger, Db).InitCommands();
 
         await Client.SetCustomStatusAsync($"v{BirthmasService.GetBotVersion()}");
         
@@ -124,22 +109,20 @@ public class BirthmasBot
 
     private async Task ClientOnSlashCommandExecuted(SocketSlashCommand arg)
     {
-        var jsonArgs = new JObject();
+        var cArgs = new StringBuilder();
         foreach (var o in arg.Data.Options)
         {
-            jsonArgs.Add(null != o.Value ? new JProperty(o.Name, o.Value.ToString()) : new JProperty(o.Name, "null"));
+            cArgs.AppendLine($"{o.Name}: {o.Value}");
         }
 
         _logger.LogInformation(
-            "Command received: {ArgCommandName}\nin channel: {GetChannelAsync}\nin server: {Name}\nfrom: {UserUsername}\n```json\nargs:{JsonArgs}\n```", arg.CommandName, await Client.GetChannelAsync(arg.ChannelId!.Value), Client.GetGuild(arg.GuildId!.Value).Name, arg.User.Username, jsonArgs);
+            "Command received: {ArgCommandName}\nin channel: {GetChannelAsync}\nin server: {Name}\nfrom: {UserUsername}\nargs:{JsonArgs}", arg.CommandName, await Client.GetChannelAsync(arg.ChannelId!.Value), Client.GetGuild(arg.GuildId!.Value).Name, arg.User.Username, cArgs);
 
-        var commands = new Commands(BirthmasService, RestClient, _logger);
+        var commands = new Commands(BirthmasService, Client, _logger, Db);
         Task f = arg.CommandName switch
         {
             "set-birthday" => commands.SetBirthdayAsync(arg),
-            "config-server" => commands.SetServerAsync(arg),
             "remove-birthday" => commands.RemoveBirthdayAsync(arg),
-            "remove-server" => commands.RemoveServerAsync(arg),
             "server-birthdays" => commands.GetServerBirthdays(arg),
             "my-birthday" => commands.MyBirthdayAsync(arg),
             "announce-birthday" => commands.AnnounceBirthdayAsync(arg),
@@ -177,14 +160,24 @@ public class BirthmasBot
             .CreateLogger();
 
         var collection = new ServiceCollection();
-
-        collection.AddTransient<IBirthmasService, BirthmasService>();
+        
+        collection.AddSingleton(new BotConfig
+        {
+            ServerId = ulong.Parse(Environment.GetEnvironmentVariable("DiscordServerId") ?? "0"),
+            AnnouncementChannelId = ulong.Parse(Environment.GetEnvironmentVariable("AnnouncementChannelId") ?? "0"),
+            ErrorChannelId = ulong.Parse(Environment.GetEnvironmentVariable("ErrorChannelId") ?? "0"),
+            BirthdayRoleId = ulong.Parse(Environment.GetEnvironmentVariable("BirthdayRoleId") ?? "0"),
+        });
+        collection.AddDbContext<BirthmasContext>();
+        
         collection
             .AddSingleton(config)
             .AddSingleton<DiscordSocketClient>();
+
+        collection.AddScoped<IBirthmasService, BirthmasService>();
+        
         collection
-            .AddSingleton(config)
-            .AddSingleton<DiscordRestClient>();
+            .AddSingleton<DatabaseInitializer>();
 
         collection.AddLogging(configuration =>
         {

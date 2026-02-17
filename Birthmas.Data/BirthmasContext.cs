@@ -7,32 +7,52 @@ namespace Birthmas.Data;
 public class BirthmasContext : DbContext
 {
     public DbSet<Person> People { get; set; }
-    public DbSet<ServerConfig> ServerConfigs { get; set; }
     public DbSet<Config> Configs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<ServerConfig>()
-            .HasMany(sc => sc.People)
-            .WithOne(p => p.Server)
-            .IsRequired();
+        modelBuilder.Entity<Person>(entity =>
+        {
+            entity.HasKey(p => p.UserId);
+
+            // key is the userId, we dont want to generate this
+            entity.Property(p => p.UserId).ValueGeneratedNever();
+        });
     }
+    
+    public static string GetMasterConnectionString()
+    {
+        return new SqlConnectionStringBuilder()
+        {
+            DataSource = Environment.GetEnvironmentVariable("DbHost"),
+            InitialCatalog = "master",
+            UserID = "sa",
+            TrustServerCertificate = true,
+            Encrypt = true,
+            Password = Environment.GetEnvironmentVariable("MSSQL_SA_PASSWORD")
+        }.ConnectionString;
+    }
+
+    private static string GetAppConnectionString()
+    {
+        return new SqlConnectionStringBuilder()
+        {
+            DataSource = Environment.GetEnvironmentVariable("DbHost"),
+            InitialCatalog = Environment.GetEnvironmentVariable("DbName"),
+            UserID = Environment.GetEnvironmentVariable("DbUser"),
+            TrustServerCertificate = true,
+            Encrypt = true,
+            Password = Environment.GetEnvironmentVariable("DbPassword")
+        }.ConnectionString;
+    }
+    
+    
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder = null)
     {
         if (optionsBuilder.IsConfigured) return;
-        
-        var connectionString = new SqlConnectionStringBuilder
-        {
-            DataSource = "dale-server",  // or "dale-server\\INSTANCENAME" if using named instance
-            InitialCatalog = "db_birthmasbot_prod",
-            UserID = "user_birthmasbot_prod",
-            Password = File.ReadAllText("/run/secrets/dbPass"),
-            TrustServerCertificate = true,  // Add this if you have certificate issues
-            Encrypt = true  // SQL Server defaults to encrypted connections
-        }.ConnectionString;
 
-        optionsBuilder.UseSqlServer(connectionString,
+        optionsBuilder.UseSqlServer(GetAppConnectionString(),
             options => { 
                 options.EnableRetryOnFailure(
                     maxRetryCount: 20, 
@@ -43,24 +63,11 @@ public class BirthmasContext : DbContext
     }
 }
 
+[PrimaryKey(nameof(UserId))]
 public class Person
 {
-    public Guid Id { get; set; }
     public ulong UserId { get; set; }
-    public DateTime Date { get; set; }
-    
-    public ServerConfig Server { get; set; }
-}
-
-public class ServerConfig
-{
-    [Key]
-    public ulong ServerId { get; set; }
-    public ulong AnnouncementChannelId { get; set; }
-    public bool GiveRole { get; set; }
-    public ulong RoleId { get; set; }
-    
-    public ICollection<Person> People { get; set; }
+    public DateOnly Date { get; set; }
 }
 
 public class Config
