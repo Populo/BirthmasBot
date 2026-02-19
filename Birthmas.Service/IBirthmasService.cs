@@ -1,7 +1,6 @@
 ﻿using Birthmas.Data;
 using Birthmas.Service.Models;
 using Discord;
-using Discord.Rest;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -85,12 +84,18 @@ public class BirthmasService(
 
     public Person AddBirthday(ulong userId, DateOnly date)
     {
-        var p = new Person()
+        var p = db.People.FirstOrDefault(b => b.UserId == userId);
+
+        if (null == p)
         {
-            UserId = userId,
-            Date = date
-        };
-        db.People.Add(p);
+            p = new Person {UserId = userId, Date = date};
+            db.People.Add(p);
+        }
+        else
+        {
+            p.Date = date;
+        }
+        
         db.SaveChanges();
         return p;
     }
@@ -122,6 +127,7 @@ public class BirthmasService(
         var user = await client.GetUserAsync(userId)
             ?? throw new Exception("Cannot get user");
         
+        await GiveUserRoleAsync(userId);
         await channel.SendMessageAsync($"Happy birthday, {user.Mention}!");
     }
 
